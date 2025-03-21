@@ -1,5 +1,8 @@
 import sqlite3 from 'sqlite3';
 import { open } from 'sqlite';
+import { Game, GamePlayer, Table, User } from '../types';
+
+export type { Game, GamePlayer, Table, User };
 
 // Khởi tạo database connection
 export async function getDb() {
@@ -7,6 +10,22 @@ export async function getDb() {
     filename: './data/billiards.db',
     driver: sqlite3.Database
   });
+}
+
+// Helper function để thực hiện transaction
+export async function executeTransaction<T>(callback: (db: Awaited<ReturnType<typeof getDb>>) => Promise<T>): Promise<T> {
+  const db = await getDb();
+  try {
+    await db.exec('BEGIN TRANSACTION');
+    const result = await callback(db);
+    await db.exec('COMMIT');
+    return result;
+  } catch (error) {
+    await db.exec('ROLLBACK');
+    throw error;
+  } finally {
+    await db.close();
+  }
 }
 
 // Khởi tạo database schema
@@ -62,7 +81,7 @@ export async function initDb() {
 }
 
 // Helper function để query database
-export async function query<T = any>(sql: string, params: any[] = []): Promise<T> {
+export async function query<T = any>(sql: string, params: any[] = []): Promise<T[]> {
   const db = await getDb();
   try {
     return await db.all(sql, params);
@@ -70,6 +89,20 @@ export async function query<T = any>(sql: string, params: any[] = []): Promise<T
     await db.close();
   }
 }
+
+// Helper function để query một record
+export async function queryOne<T = any>(sql: string, params: any[] = []): Promise<T | null> {
+  const results = await query<T>(sql, params);
+  return results[0] || null;
+}
+
+export default {
+  query,
+  queryOne,
+  getDb,
+  initDb,
+  executeTransaction
+};
 
 // Khởi tạo database khi import module
 initDb().catch(console.error); 

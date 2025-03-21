@@ -33,10 +33,11 @@ export async function POST(request: Request) {
     }
 
     // Insert table
-    await db.execute(`
-      INSERT INTO tables (name, type, hourly_rate, status)
-      VALUES (?, ?, ?, ?)
-    `, [table.name, table.type, table.hourly_rate, table.status || 'available']);
+    await db.query(
+      `INSERT INTO tables (name, type, hourly_rate, status)
+       VALUES (?, ?, ?, ?)`,
+      [table.name, table.type, table.hourly_rate, table.status || 'available']
+    );
 
     return NextResponse.json({ 
       success: true,
@@ -67,10 +68,11 @@ export async function PATCH(
       );
     }
 
-    // Update table
-    await db.execute(
-      'UPDATE tables SET status = ? WHERE id = ?',
-      [updates.status, id]
+    await db.query(
+      `UPDATE tables 
+       SET name = ?, type = ?, hourly_rate = ?, status = ?
+       WHERE id = ?`,
+      [updates.name, updates.type, updates.hourly_rate, updates.status, id]
     );
 
     return NextResponse.json({ 

@@ -37,4 +37,44 @@ export interface Expense {
   paid: boolean;
   paymentMethod?: 'cash' | 'bank_transfer' | 'momo' | 'zalo_pay';
   paymentDate?: string;
+}
+
+export interface Game {
+  id: number;
+  table_id: number;
+  start_time: string;
+  end_time?: string;
+  status: 'active' | 'completed' | 'cancelled';
+  total_amount?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GamePlayer {
+  game_id: number;
+  user_id: number;
+  is_winner: boolean;
+  amount_to_pay: number;
+  has_paid: boolean;
+  payment_method?: string;
+  paid_at?: string;
+}
+
+export interface Table {
+  id: number;
+  name: string;
+  type: string;
+  status: 'available' | 'occupied';
+  created_at: string;
+  updated_at: string;
+}
+
+export interface User {
+  id: number;
+  name: string;
+  phone: string;
+  avatar?: string;
+  payment_qr?: string;
+  created_at?: string;
+  updated_at?: string;
 } 

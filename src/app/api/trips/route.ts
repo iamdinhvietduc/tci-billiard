@@ -16,7 +16,7 @@ interface TripResult {
 
 export async function GET() {
   try {
-    const trips = db.prepare(`
+    const trips = await db.query<TripResult>(`
       SELECT t.*, 
              GROUP_CONCAT(tp.member_id) as participants,
              GROUP_CONCAT(tp.has_paid) as payment_status
@@ -24,7 +24,7 @@ export async function GET() {
       LEFT JOIN trip_participants tp ON t.id = tp.trip_id
       GROUP BY t.id
       ORDER BY t.created_at DESC
-    `).all() as TripResult[];
+    `);
 
     // Process the results to format participants and payment status
     const formattedTrips: BilliardTrip[] = trips.map(trip => ({
@@ -57,23 +57,22 @@ export async function POST(request: Request) {
     const id = uuidv4();
 
     // Insert trip
-    const tripStmt = db.prepare(`
-      INSERT INTO trips (id, date, total_amount, payer_id)
-      VALUES (?, ?, ?, ?)
-    `);
-    tripStmt.run(id, date, total_amount, payer_id);
+    await db.query(
+      `INSERT INTO trips (id, date, total_amount, payer_id)
+       VALUES (?, ?, ?, ?)`,
+      [id, date, total_amount, payer_id]
+    );
 
     // Insert participants
-    const participantStmt = db.prepare(`
-      INSERT INTO trip_participants (trip_id, member_id)
-      VALUES (?, ?)
-    `);
-
     for (const participantId of participants) {
-      participantStmt.run(id, participantId);
+      await db.query(
+        `INSERT INTO trip_participants (trip_id, member_id)
+         VALUES (?, ?)`,
+        [id, participantId]
+      );
     }
 
-    const trip = db.prepare(`
+    const [trip] = await db.query<TripResult>(`
       SELECT t.*, 
              GROUP_CONCAT(tp.member_id) as participants,
              GROUP_CONCAT(tp.has_paid) as payment_status
@@ -81,7 +80,7 @@ export async function POST(request: Request) {
       LEFT JOIN trip_participants tp ON t.id = tp.trip_id
       WHERE t.id = ?
       GROUP BY t.id
-    `).get(id) as TripResult;
+    `, [id]);
 
     const formattedTrip: BilliardTrip = {
       id: trip.id,
@@ -111,8 +110,10 @@ export async function PUT(request: Request) {
   try {
     const { id, status } = await request.json();
 
-    const stmt = db.prepare('UPDATE trips SET status = ? WHERE id = ?');
-    stmt.run(status, id);
+    await db.query(
+      'UPDATE trips SET status = ? WHERE id = ?',
+      [status, id]
+    );
 
     return NextResponse.json({ success: true });
   } catch (error) {
@@ -126,12 +127,16 @@ export async function DELETE(request: Request) {
     const { id } = await request.json();
 
     // Delete participants first
-    const deleteParticipantsStmt = db.prepare('DELETE FROM trip_participants WHERE trip_id = ?');
-    deleteParticipantsStmt.run(id);
+    await db.query(
+      'DELETE FROM trip_participants WHERE trip_id = ?',
+      [id]
+    );
 
     // Then delete the trip
-    const deleteTripStmt = db.prepare('DELETE FROM trips WHERE id = ?');
-    deleteTripStmt.run(id);
+    await db.query(
+      'DELETE FROM trips WHERE id = ?',
+      [id]
+    );
 
     return NextResponse.json({ success: true });
   } catch (error) {

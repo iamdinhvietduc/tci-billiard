@@ -16,7 +16,9 @@ import {
   ArrowUpTrayIcon,
   MagnifyingGlassMinusIcon,
   MagnifyingGlassPlusIcon,
-  XMarkIcon
+  XMarkIcon,
+  CheckCircleIcon,
+  ExclamationCircleIcon
 } from '@heroicons/react/24/outline';
 
 interface Member {
@@ -77,6 +79,11 @@ interface PaymentQRModal {
   onConfirm: () => void;
 }
 
+interface Toast {
+  type: 'success' | 'error';
+  message: string;
+}
+
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('vi-VN', {
     style: 'currency',
@@ -111,37 +118,39 @@ export default function Home() {
   const [showPaymentQR, setShowPaymentQR] = useState<{member: Member; amount: number; billId: number} | null>(null);
   const [qrZoom, setQrZoom] = useState(false);
   const [qrLoading, setQrLoading] = useState(false);
+  const [toast, setToast] = useState<Toast | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      const [membersResponse, billsResponse] = await Promise.all([
+        fetch('/api/members'),
+        fetch('/api/bills')
+      ]);
+
+      if (!membersResponse.ok || !billsResponse.ok) {
+        throw new Error('Failed to fetch data');
+      }
+
+      const [membersData, billsData] = await Promise.all([
+        membersResponse.json(),
+        billsResponse.json()
+      ]);
+
+      console.log('Loaded members data:', membersData);
+      setMembers(membersData);
+      setBills(billsData);
+      setError(null);
+    } catch (err) {
+      console.error('Error loading data:', err);
+      setError('Failed to load data. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        setLoading(true);
-        const [membersResponse, billsResponse] = await Promise.all([
-          fetch('/api/members'),
-          fetch('/api/bills')
-        ]);
-
-        if (!membersResponse.ok || !billsResponse.ok) {
-          throw new Error('Failed to fetch data');
-        }
-
-        const [membersData, billsData] = await Promise.all([
-          membersResponse.json(),
-          billsResponse.json()
-        ]);
-
-        console.log('Loaded members data:', membersData);
-        setMembers(membersData);
-        setBills(billsData);
-        setError(null);
-      } catch (err) {
-        console.error('Error loading data:', err);
-        setError('Failed to load data. Please try again.');
-      } finally {
-        setLoading(false);
-      }
-    };
-
     loadData();
   }, []);
 
@@ -180,129 +189,75 @@ export default function Home() {
     }
   };
 
-  const handleAddMember = async () => {
-    if (!newMember.name || !newMember.payment_qr) {
-      alert('Vui lòng điền đầy đủ thông tin');
-      return;
-    }
+  const showToast = (type: 'success' | 'error', message: string) => {
+    setToast({ type, message });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const handleAddMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isSubmitting) return;
 
     try {
-      // Upload QR code using the new API route
-      const uploadResponse = await fetch('/api/upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: newMember.payment_qr })
-      });
-
-      if (!uploadResponse.ok) {
-        throw new Error('Failed to upload QR code');
-      }
-
-      const { url: cloudinaryUrl } = await uploadResponse.json();
-      console.log('Uploaded QR URL:', cloudinaryUrl);
-
+      setIsSubmitting(true);
       const response = await fetch('/api/members', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...newMember,
-          payment_qr: cloudinaryUrl,
-          avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(newMember.name)}`
-        })
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(newMember),
       });
 
       if (!response.ok) {
         throw new Error('Failed to add member');
       }
 
-      const result = await response.json();
-      setMembers([...members, { 
-        ...newMember, 
-        id: result.memberId, 
-        payment_qr: cloudinaryUrl,
-        avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(newMember.name)}` 
-      }]);
+      showToast('success', 'Thêm thành viên thành công');
       setShowAddMemberForm(false);
-      setNewMember({ name: '', phone: '', avatar: '', payment_qr: '' });
+      setNewMember({
+        name: '',
+        phone: '',
+        avatar: '',
+        payment_qr: ''
+      });
+      await loadData();
     } catch (error) {
       console.error('Error adding member:', error);
-      alert('Có lỗi xảy ra khi thêm thành viên');
+      showToast('error', 'Lỗi khi thêm thành viên');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const handleAddBill = async () => {
-    if (!newBill.date || !newBill.totalAmount || !newBill.tableNumber || !newBill.payer || newBill.participants.length === 0) {
-      alert('Vui lòng điền đầy đủ thông tin');
+  const handleAddBill = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isSubmitting) return;
+
+    if (!newBill.participants.length) {
+      showToast('error', 'Vui lòng chọn ít nhất một người chơi');
       return;
     }
 
-    const payer = members.find(m => m.id === newBill.payer);
-    if (!payer) {
-      alert('Không tìm thấy người trả tiền');
+    if (!newBill.payer) {
+      showToast('error', 'Vui lòng chọn người thanh toán');
       return;
     }
 
     try {
-      const billData = {
-        date: newBill.date,
-        total_amount: newBill.totalAmount,
-        table_number: newBill.tableNumber,
-        payer_id: newBill.payer,
-        participants: newBill.participants,
-        notes: newBill.notes || '',
-        status: 'active',
-        start_time: new Date().toISOString()
-      };
-
-      console.log('Sending bill data:', billData);
-
+      setIsSubmitting(true);
       const response = await fetch('/api/bills', {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
-          'Accept': 'application/json'
         },
-        body: JSON.stringify(billData)
+        body: JSON.stringify(newBill),
       });
-
-      const result = await response.json();
-      console.log('API Response:', result);
 
       if (!response.ok) {
-        throw new Error(result.message || `Lỗi khi tạo bill: ${response.status} ${response.statusText}`);
+        throw new Error('Failed to create bill');
       }
 
-      if (!result.billId) {
-        throw new Error('API không trả về billId');
-      }
-
-      // Tạo object payments với tất cả người chơi chưa thanh toán
-      const payments: Record<number, boolean> = {};
-      newBill.participants.forEach(participantId => {
-        payments[participantId] = false;
-      });
-
-      // Thêm bill mới vào state
-      const newBillWithDetails: ExtendedBill = {
-        id: result.billId,
-        date: newBill.date,
-        total_amount: newBill.totalAmount,
-        table_number: newBill.tableNumber,
-        status: 'active',
-        start_time: new Date().toISOString(),
-        end_time: undefined,
-        notes: newBill.notes,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        participants: newBill.participants,
-        payments: payments,
-        organizer: payer,
-        payer_id: newBill.payer
-      };
-
-      setBills(prevBills => [...prevBills, newBillWithDetails]);
-
-      // Reset form
+      showToast('success', 'Tạo hóa đơn thành công');
       setNewBill({
         date: new Date().toISOString().split('T')[0],
         totalAmount: 0,
@@ -311,11 +266,12 @@ export default function Home() {
         payer: 0,
         notes: '',
       });
-
-      alert('Tạo bill thành công!');
+      await loadData();
     } catch (error) {
-      console.error('Error details:', error);
-      alert(error instanceof Error ? error.message : 'Có lỗi xảy ra khi thêm bill');
+      console.error('Error creating bill:', error);
+      showToast('error', 'Lỗi khi tạo hóa đơn');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -483,6 +439,22 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-gray-50">
+      {/* Toast Notification */}
+      {toast && (
+        <div className="fixed top-4 right-4 z-50 animate-fade-in">
+          <div className={`rounded-lg shadow-lg p-4 flex items-center gap-3 ${
+            toast.type === 'success' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
+          }`}>
+            {toast.type === 'success' ? (
+              <CheckCircleIcon className="h-5 w-5 text-green-500" />
+            ) : (
+              <ExclamationCircleIcon className="h-5 w-5 text-red-500" />
+            )}
+            <p>{toast.message}</p>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex justify-between items-center mb-8 bg-white p-6 rounded-lg shadow-sm">
           <div>
@@ -706,7 +678,7 @@ export default function Home() {
                         onClick={() => {
                           if (!bill.payments[participantId]) {
                             setShowPaymentQR({
-                              member,
+                              member: bill.organizer,
                               amount: calculateShare(bill),
                               billId: bill.id
                             });
@@ -1003,10 +975,17 @@ export default function Home() {
                 </button>
                 <button
                   onClick={handleAddMember}
-                  disabled={!newMember.name || !newMember.payment_qr}
-                  className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors shadow-sm"
+                  disabled={!newMember.name || !newMember.payment_qr || isSubmitting}
+                  className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors shadow-sm flex items-center justify-center gap-2"
                 >
-                  Thêm thành viên
+                  {isSubmitting ? (
+                    <>
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                      <span>Đang xử lý...</span>
+                    </>
+                  ) : (
+                    'Thêm thành viên'
+                  )}
                 </button>
               </div>
             </div>

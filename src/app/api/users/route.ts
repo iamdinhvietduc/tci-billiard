@@ -46,15 +46,16 @@ export async function POST(request: Request) {
     }
 
     // Insert user
-    await db.execute(`
-      INSERT INTO users (name, phone, avatar, payment_qr)
-      VALUES (?, ?, ?, ?)
-    `, [
-      user.name,
-      user.phone,
-      user.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${Date.now()}`,
-      user.payment_qr || null
-    ]);
+    await db.query(
+      `INSERT INTO users (name, phone, avatar, payment_qr)
+       VALUES (?, ?, ?, ?)`,
+      [
+        user.name,
+        user.phone,
+        user.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${Date.now()}`,
+        user.payment_qr || null
+      ]
+    );
 
     return NextResponse.json({ 
       success: true,
@@ -101,20 +102,21 @@ export async function PATCH(
     }
 
     // Update user
-    await db.execute(`
-      UPDATE users 
-      SET name = COALESCE(?, name),
-          phone = COALESCE(?, phone),
-          avatar = COALESCE(?, avatar),
-          payment_qr = COALESCE(?, payment_qr)
-      WHERE id = ?
-    `, [
-      updates.name,
-      updates.phone,
-      updates.avatar,
-      updates.payment_qr,
-      id
-    ]);
+    await db.query(
+      `UPDATE users 
+       SET name = COALESCE(?, name),
+           phone = COALESCE(?, phone),
+           avatar = COALESCE(?, avatar),
+           payment_qr = COALESCE(?, payment_qr)
+       WHERE id = ?`,
+      [
+        updates.name,
+        updates.phone,
+        updates.avatar,
+        updates.payment_qr,
+        id
+      ]
+    );
 
     return NextResponse.json({ 
       success: true,
